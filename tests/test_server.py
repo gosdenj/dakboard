@@ -113,6 +113,28 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("flatkey", data["rejected"])
 
+    def test_saving_settings_pushes_the_new_state_to_the_board(self):
+        """A changed setting has to reach the board straight away.
+
+        The board renders the settings it was last given, so a change that
+        was saved but not published kept the old transition on the wall
+        until something else happened to publish.
+        """
+        q = self.state.subscribe()
+        try:
+            status, data = self.post("/api/settings", {
+                "values": {"photos.transition_ms": 2500}})
+            self.assertEqual(status, 200)
+            item = q.get(timeout=5)
+            self.assertIsNotNone(item, "the board was never told about the change")
+            reason, payload = item
+            # "state" is the event the board listens for - any other name
+            # is an event the browser ignores
+            self.assertEqual(reason, "state")
+            self.assertEqual(payload["config"]["transition_ms"], 2500)
+        finally:
+            self.state.unsubscribe(q)
+
     def test_oauth_start_needs_a_client_id(self):
         self.config.set("calendar.client_id", "")
         self.config.set("calendar.redirect_uri", "")

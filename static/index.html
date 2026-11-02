@@ -340,6 +340,7 @@ let clockAnchor = 0;
 let serverNow = 0;
 let photoA = null, photoB = null, photoFront = true;
 let currentPhotoUrl = null;
+let transitionGen = 0;       // which photo change is the current one
 let eventSignature = "";
 let stripSignature = "";
 let pollTimer = null;
@@ -619,32 +620,94 @@ function ensureLayer(){
   return layer;
 }
 
-function showPhoto(url, transition, durationMs){
-  if(!url || url === currentPhotoUrl) return;
-  const front = photoFront ? photoA : photoB;
-  const back  = photoFront ? photoB : photoA;
-  if(!front || !back){ photoA = ensureLayer(); photoB = ensureLayer(); return showPhoto(url, transition, durationMs); }
+/* The transitions the settings page offers. They have to LOOK different,
+   otherwise choosing one is pointless - and they did not: the page sent
+   "kenburns" while this script looked for "ken", so Ken Burns never ran,
+   and "fade" and "slide" were the same fade.
 
+   "from" is where the arriving photo starts and "to" is where it ends up.
+   A slide is scaled up a little further than it looks like it should be,
+   so the frame edge never shows through while the photo is on its way. */
+const TRANSITIONS = {
+  fade:     {from:"scale(1.03)",                 to:"scale(1.03)",                 ken:false},
+  slide:    {from:"translateX(4%) scale(1.09)", to:"translateX(0) scale(1.09)",  ken:false},
+  kenburns: {from:"scale(1)",                    to:"scale(1.09)",                ken:true},
+};
+
+function transitionSpec(kind, durationMs){
+  const t = TRANSITIONS[kind] || TRANSITIONS.fade;
+  let ms = Number(durationMs);
+  if(!isFinite(ms) || ms < 0) ms = 1000;
+  return {
+    ms: ms,
+    // Ken Burns is a slow push-in. It needs longer than the crossfade or
+    // it stops half way and looks like a mistake.
+    transformMs: t.ken ? Math.max(ms, 9000) : ms,
+    from: t.from, to: t.to, ken: t.ken
+  };
+}
+
+function showPhoto(url, transition, durationMs){
+  if(!url) return;
+  if(!photoA || !photoB){ photoA = ensureLayer(); photoB = ensureLayer(); }
+  const spec = transitionSpec(transition, durationMs);
+
+  if(url === currentPhotoUrl){
+    // The photo has not changed but the transition settings might have.
+    // Put the new timing on the photo that is on screen so it takes
+    // effect at the next change instead of being quietly ignored.
+    const visible = photoFront ? photoA : photoB;
+    visible.style.transition = "opacity " + spec.ms + "ms ease, transform " +
+                               spec.transformMs + "ms linear";
+    return;
+  }
+
+  const gen = ++transitionGen;
+  const front = photoFront ? photoA : photoB;   // the photo on screen
+  const back  = photoFront ? photoB : photoA;   // the one arriving
+
+  // The arriving photo goes on top whatever the order in the DOM. Without
+  // this every SECOND change faded the old photo out over the stylesheet
+  // default instead of the time the user asked for, which is why the
+  // transition time never seemed to stick.
+  back.style.zIndex  = "2";
+  front.style.zIndex = "1";
+
+  // Put the arriving photo in its starting position with transitions off,
+  // so it does not animate in from wherever it was left.
   back.classList.remove("on","ken");
-  back.style.transition = "";
-  back.src = url;
+  back.style.transition = "none";
+  back.style.transform  = spec.from;
+  back.style.opacity    = "0";
 
   const apply = () => {
-    back.classList.add("on");
-    if(transition === "ken") back.classList.add("ken");
-    back.style.transition = "opacity " + durationMs + "ms ease, transform " +
-                            (transition === "ken" ? 9000 : durationMs) + "ms linear";
-    back.style.transform = transition === "ken" ? "scale(1.09)" : "scale(1.03)";
+    if(gen !== transitionGen) return;           // a newer photo won
+    back.style.transition = "opacity " + spec.ms + "ms ease, transform " +
+                            spec.transformMs + "ms linear";
+    back.style.opacity = "1";
+    back.style.transform = spec.to;
   };
-  // wait for the image to be decodable so the transition never flashes
+  back.onload = () => requestAnimationFrame(apply);
+  back.src = url;
+  if(spec.ken) back.classList.add("ken");
+  void back.offsetWidth;          // force the browser to see the start
+  // an image that is already decoded does not fire onload
   if(back.complete && back.naturalWidth > 0) requestAnimationFrame(apply);
-  else back.onload = () => requestAnimationFrame(apply);
 
+  // The photo on screen stays where it is, UNDER the arriving one, which
+  // fades in on top of it. Fading both of them out together would make
+  // the board dim - and a transition longer than the photo interval would
+  // leave it half dark for good.
   setTimeout(() => {
+    // A newer transition has taken over - leave the layers alone. Without
+    // this check a slow transition tidied up the WRONG layer and the
+    // board went dark.
+    if(gen !== transitionGen) return;
     front.classList.remove("on","ken");
     front.style.transition = "";
     front.style.transform = "";
-  }, durationMs + 60);
+    front.style.opacity = "";
+  }, spec.ms + 80);
 
   currentPhotoUrl = url;
   photoFront = !photoFront;

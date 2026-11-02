@@ -240,17 +240,22 @@ ol.steps a{ color:#93c5fd; }
       </div>
       <div class="field">
         <label>Transition length (ms)</label>
-        <input type="number" id="photos-transition_ms" data-path="photos.transition_ms" min="200" max="5000" step="100">
+        <input type="number" id="photos-transition_ms" data-path="photos.transition_ms" min="200" max="20000" step="100">
       </div>
       <div class="field">
         <label>Change photo every (seconds)</label>
-        <input type="number" id="photos-rotate_seconds" data-path="photos.rotate_seconds" min="3" max="3600">
+        <input type="number" id="photos-rotate_seconds" data-path="photos.rotate_seconds" min="0" max="3600">
       </div>
       <div class="field">
         <label>Re-read the album every (minutes)</label>
-        <input type="number" id="photos-refresh_minutes" data-path="photos.refresh_minutes" min="5" max="1440">
+        <input type="number" id="photos-refresh_minutes" data-path="photos.refresh_minutes" min="1" max="1440">
       </div>
     </div>
+    <p class="hint">
+      The transition is how long the board takes to change from one photo to
+      the next - keep it shorter than the time each photo stays on the
+      screen. Set the photo interval to 0 to stop the photos changing.
+    </p>
     <div class="field">
       <label class="switch">
         <input type="checkbox" id="photos-shuffle" data-path="photos.shuffle">

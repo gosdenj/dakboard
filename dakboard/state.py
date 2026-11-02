@@ -62,6 +62,16 @@ class BoardState:
             except Exception:
                 pass
 
+    def publish_settings(self):
+        """Push the current state after the settings changed.
+
+        The board listens for the "state" event, so the reason has to be
+        "state" - any other name is an event the browser does not handle,
+        and the board would carry on rendering the old transition settings
+        until something else happened to publish.
+        """
+        self._publish("state")
+
     # -- data --------------------------------------------------------------
     def snapshot(self):
         with self._lock:

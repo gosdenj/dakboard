@@ -233,6 +233,10 @@ class BoardHandler(BaseHTTPRequestHandler):
         values = payload.get("values") or {}
         saved, rejected = self.config.update(values)
         self._persist()
+        # tell the board the new settings straight away - it renders the
+        # transition settings it was last given, and waiting for the next
+        # photo change made a change look like it had not been saved
+        self.state.publish_settings()
         # apply anything that changes what the pollers should do
         if any(p.startswith("calendar.") for p in saved):
             threading.Thread(target=self.state.poll_calendar, daemon=True).start()

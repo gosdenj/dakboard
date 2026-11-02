@@ -99,5 +99,83 @@ class BoardPageTests(unittest.TestCase):
         self.assertIn("console.error", handlers)
 
 
+class PhotoTransitionTests(unittest.TestCase):
+    """The photo transition is the part of the board people actually look at.
+
+    Two separate bugs made the transition settings look like they were
+    being ignored:
+
+      * the settings page stores "kenburns" but the board looked for
+        "ken", so Ken Burns never ran;
+      * the arriving photo was not put on top, so every second change
+        faded the old photo out over the stylesheet default instead of
+        over the time the user asked for.
+    """
+
+    def show_photo(self):
+        body = BOARD[BOARD.index("function showPhoto("):]
+        return body[:body.index("\n}\n")]
+
+    def test_the_transition_name_matches_the_settings_page(self):
+        """The settings page stores "kenburns"."""
+        self.assertNotIn('transition === "ken"', BOARD,
+                         "the board looked for a transition name the "
+                         "settings page never sends")
+        self.assertIn('"kenburns"', BOARD)
+
+    def test_all_three_transitions_are_different(self):
+        """Choosing a transition has to change what the board does."""
+        block = BOARD[BOARD.index("const TRANSITIONS = {"):]
+        block = block[:block.index("\n};")]
+        for name in ("fade", "slide", "kenburns"):
+            self.assertIn(name + ":", block, name)
+        fade = block[block.index("fade:"):block.index("slide:")]
+        slide = block[block.index("slide:"):block.index("kenburns:")]
+        self.assertNotEqual(fade, slide,
+                            "fade and slide must not be the same transition")
+
+    def test_the_photo_on_screen_is_not_faded_out(self):
+        """The photo on screen stays put, under the one arriving.
+
+        Fading both of them out together makes the board dim - and a
+        transition longer than the photo interval leaves it half dark.
+        """
+        show = self.show_photo()
+        self.assertNotIn('front.style.opacity = "0"', show,
+                         "the photo on screen must not be faded out - the "
+                         "arriving one fades in over the top of it")
+
+    def test_the_arriving_photo_fades_in_over_the_one_on_screen(self):
+        """That is what makes the transition length visible."""
+        show = self.show_photo()
+        self.assertIn('back.style.opacity = "1"', show)
+        self.assertIn("spec.ms", show)
+
+    def test_the_photo_on_screen_is_hidden_once_the_new_one_is_in_place(self):
+        show = self.show_photo()
+        self.assertIn('front.style.opacity = ""', show)
+        self.assertIn("spec.ms + 80", show)
+
+    def test_the_arriving_photo_goes_on_top(self):
+        """Otherwise every second change fades the wrong layer."""
+        show = self.show_photo()
+        self.assertIn("back.style.zIndex", show)
+
+    def test_a_stale_transition_cannot_tidy_up_the_wrong_layer(self):
+        """A slow transition must not blank the board."""
+        show = self.show_photo()
+        self.assertIn("transitionGen", show,
+                      "the cleanup has to know whether it is still the "
+                      "current transition")
+
+    def test_the_transition_length_is_not_hardcoded(self):
+        """The old code baked the fallback into the stylesheet only."""
+        show = self.show_photo()
+        self.assertIn("spec.ms", show)
+        self.assertNotIn("durationMs + 60", show,
+                         "the old cleanup timing was tied to the old "
+                         "transition value")
+
+
 if __name__ == "__main__":
     unittest.main()
