@@ -218,6 +218,60 @@ without anybody having to `chown` anything.
 To fill the settings in, open **http://<target-ip>:8099/settings** and
 save them. The first save writes the file into the volume.
 
+### Carrying the settings over from another board
+
+If the board already runs somewhere else — a laptop, say — its settings
+can be posted to the new one rather than typed in again. The settings API
+takes them flat, by dotted path, and the values are never echoed back:
+
+```bash
+curl -X POST "http://<target-ip>:8099/api/settings" \
+  -H "Content-Type: application/json" \
+  -d '{"values": {
+        "calendar.mode": "ical",
+        "calendar.ical_url": "...",
+        "photos.album_url": "...",
+        "weather.place": "..."
+      }}'
+```
+
+The settings file itself is nested, so the flat form has to be built
+from it. Read the old one, flatten it, and keep the keys you want:
+
+```bash
+python3 - <<'PY'
+import json, urllib.request
+
+stored = json.load(open("/path/to/old/config.json"))
+
+def flatten(data, prefix=""):
+    out = {}
+    for key, value in data.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            out.update(flatten(value, path))
+        else:
+            out[path] = value
+    return out
+
+flat = flatten(stored)
+keep = ["calendar.mode", "calendar.ical_url", "photos.album_url",
+        "weather.place", "display.layout", "display.theme"]
+values = {k: flat[k] for k in keep if k in flat}
+
+body = json.dumps({"values": values}).encode()
+request = urllib.request.Request(
+    "http://<target-ip>:8099/api/settings",
+    data=body, headers={"Content-Type": "application/json"}, method="POST")
+print(urllib.request.urlopen(request, timeout=20).read().decode())
+PY
+```
+
+The iCal URL is a secret: it is the address of your calendar, and anyone
+who has it can read your calendar. It travels over the LAN in the clear
+here, so do this on the network the board lives on, not over a link
+anyone else can see.
+
 To read them back:
 
 ```bash
