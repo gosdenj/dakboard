@@ -258,8 +258,8 @@ Everything is configured in the settings page. The board stores it in
 | `calendar.days_ahead` | `3` | how many days to show, and how far ahead to fetch |
 | `photos.album_url` | — | the shared album link |
 | `photos.transition` | `slide` | `fade`, `slide` or `kenburns` |
-| `photos.transition_ms` | `1000` | |
-| `photos.rotate_seconds` | `6` | |
+| `photos.transition_ms` | `1000` | how long the change from one photo to the next takes |
+| `photos.rotate_seconds` | `6` | how long each photo stays on the board (`0` pauses it) |
 | `photos.shuffle` | `true` | |
 | `photos.refresh_minutes` | `30` | how often to re-read the album |
 | `weather.place` | `Welwyn Garden City` | |
