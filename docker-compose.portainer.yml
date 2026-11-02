@@ -63,10 +63,12 @@ services:
         max-size: "10m"
         max-file: "3"
 
-    # On the shared proxy network, so Caddy can reach the board by its
-    # service name if a hostname is ever wanted.
-    networks:
-      - proxy_net
+    # The board is reached directly, on the host port above.
+    #
+    # There is no proxy_net here: that network is created by the caddy
+    # stack, and a stack that declares it as external cannot be deployed
+    # to a host where it does not exist yet.  If a hostname is wanted
+    # later, join it then - and make sure the network is there first.
 
     security_opt:
       - no-new-privileges:true
@@ -88,8 +90,3 @@ volumes:
     # The name is fixed, so the volume is the same one whatever the stack
     # is called, and it is easy to find.
     name: dakboard-config
-
-networks:
-  proxy_net:
-    name: proxy_net
-    external: true

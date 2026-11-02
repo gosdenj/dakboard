@@ -390,9 +390,11 @@ board.longie.net {
 }
 ```
 
-For Caddy running on the same host in Docker, the board container has to join
-the `proxy_net` network — the ready-made stack in
-`docker-compose.portainer.yml` already does this.
+For Caddy running on the same host in Docker, the board container has to
+join the same network Caddy is on — `proxy_net` in the other stacks. The
+ready-made stack in `docker-compose.portainer.yml` does not join it,
+because that network belongs to the caddy stack; see
+[docs/PORTAINER.md](docs/PORTAINER.md) for how to add it.
 
 ### A hostname on your LAN
 

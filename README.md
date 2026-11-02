@@ -208,7 +208,11 @@ board.longie.net {
 }
 ```
 
-The board container joins `proxy_net`, so Caddy reaches it by service name.
+Caddy reaches the board by service name only if the board container joins
+the same Docker network Caddy is on (`proxy_net` in the other stacks).
+The stack here does not join it — see
+[docs/PORTAINER.md](docs/PORTAINER.md) for how to add it when you want
+the hostname.
 
 ### Secrets
 

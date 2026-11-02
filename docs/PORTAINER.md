@@ -331,7 +331,23 @@ board.longie.net {
 }
 ```
 
-The board container joins `proxy_net`, so Caddy reaches it by service name.
+Caddy reaches the board by service name only if the board container joins
+the same Docker network the caddy container is on — `proxy_net` in the
+other stacks. The stack here does not join it, because that network is
+created by the caddy stack and a stack declaring it as `external` cannot
+be deployed to a host where it does not exist. If you want the hostname,
+add the network to the board's compose file **and** make sure it is
+already there on the host before redeploying:
+
+```yaml
+    networks:
+      - proxy_net
+
+networks:
+  proxy_net:
+    name: proxy_net
+    external: true
+```
 
 ## When something goes wrong
 
