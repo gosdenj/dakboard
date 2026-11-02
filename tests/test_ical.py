@@ -140,6 +140,30 @@ class IcalTests(unittest.TestCase):
             "SUMMARY:Last week\r\nEND:VEVENT\r\n")
         self.assertEqual(events, [])
 
+    def test_an_overnight_event_that_is_still_running_is_kept(self):
+        """It started last night and it is happening NOW.
+
+        The window starts at midnight today, so without this it was never
+        fetched and the board never showed it at all.
+        """
+        events = self.parse(
+            "BEGIN:VEVENT\r\nUID:overnight@test\r\n"
+            "DTSTART;TZID=Europe/London:20261029T220000\r\n"
+            "DTEND;TZID=Europe/London:20261030T120000\r\n"
+            "SUMMARY:Conference\r\nEND:VEVENT\r\n")
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["summary"], "Conference")
+        self.assertEqual(events[0]["start"][:16], "2026-10-29T22:00")
+
+    def test_an_overnight_event_that_has_finished_is_left_out(self):
+        """It is history now, so it does not belong on the board."""
+        events = self.parse(
+            "BEGIN:VEVENT\r\nUID:overnight-done@test\r\n"
+            "DTSTART;TZID=Europe/London:20261029T220000\r\n"
+            "DTEND;TZID=Europe/London:20261030T080000\r\n"
+            "SUMMARY:Finished earlier\r\nEND:VEVENT\r\n")
+        self.assertEqual(events, [])
+
     def test_event_beyond_horizon_is_excluded(self):
         events = self.parse(
             "BEGIN:VEVENT\r\nUID:l@test\r\n"

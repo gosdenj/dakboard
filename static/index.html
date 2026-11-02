@@ -128,6 +128,12 @@
 .ev .n{ font-size:clamp(12px, 2.55cqi, 42px); line-height:1.28; font-weight:400; min-width:0; }
 .ev .w{ font-size:clamp(10px, 1.95cqi, 32px); color:var(--faint); margin-top:calc(var(--u)*.12); }
 .ev.now .t{ color:var(--accent); font-weight:500; }
+/* the marker that says how much of the day did not fit */
+.more{
+  font-size:clamp(10px, 1.8cqi, 28px); color:var(--faint);
+  padding:calc(var(--u)*.3) 0; border-top:1px solid var(--line);
+  flex-shrink:0;
+}
 .ev .pill{
   display:inline-block; font-size:clamp(9.5px, 1.7cqi, 27px);
   padding:.15em .45em; border-radius:calc(var(--u)*.28);
@@ -450,14 +456,46 @@ function dayLabel(offset, date){
          MONTHS[date.getMonth()].slice(0, 3);
 }
 
+/* When does an event end?
+   An event with no end time never ends - it just goes on, and treating it
+   as "ends now" would make it vanish the moment it appeared. */
+function eventEndMs(ev){
+  if(!ev || !ev.end) return Infinity;
+  const t = new Date(ev.end).getTime();
+  return isNaN(t) ? Infinity : t;
+}
+
+/* Has it finished? A finished event rolls out of view and the space it
+   was using goes back to what is happening now. */
+function isEventOver(ev, now){
+  return eventEndMs(ev) <= now;
+}
+
+/* Is it happening at this moment? */
+function isEventRunning(ev, now){
+  const start = new Date(ev.start).getTime();
+  if(isNaN(start)) return false;
+  return now >= start && now <= eventEndMs(ev);
+}
+
+/* Which day does an event belong under?
+   An event that is HAPPENING NOW belongs under today even when it started
+   yesterday - otherwise an overnight event would never be shown at all,
+   because the calendar only reaches back so far. */
+function eventGroupKey(ev, now, todayKey){
+  if(isEventRunning(ev, now)) return todayKey;
+  return localDateKey(ev.start);
+}
+
 function groupEvents(){
   /* Bucket the events into one group per day, for as many days as the board
      is set to show. Every group carries a priority so the content-drop
      rules can shed the least important one first. */
   const days = daysAhead();
+  const now = Date.now() + clockSkew;
   const out = [];
   for(let i = 0; i < days; i++){
-    const d = new Date();
+    const d = new Date(now);
     d.setDate(d.getDate() + i);
     out.push({
       key: localDateKey(d.toISOString()),
@@ -468,8 +506,14 @@ function groupEvents(){
   }
   const byKey = {};
   out.forEach(g => { byKey[g.key] = g; });
+  const todayKey = out[0].key;
   ((state && state.events) || []).forEach(ev => {
-    const g = byKey[localDateKey(ev.start)];
+    /* An event that has finished rolls out of view. The board is showing
+       what is happening now and what is coming up, not a list of what
+       already happened - and every finished event was taking the space
+       that the events still to come needed. */
+    if(isEventOver(ev, now)) return;
+    const g = byKey[eventGroupKey(ev, now, todayKey)];
     if(g) g.events.push(ev);
   });
   return out;
@@ -505,7 +549,9 @@ function buildEventNode(ev){
   row.appendChild(t); row.appendChild(body);
   row.dataset.evId = ev.start + "|" + (ev.summary || "");
   row.dataset.evStart = ev.start;
-  row.dataset.evEnd = ev.end || ev.start;
+  /* An event with no end time has no end - NOT the same as ending now,
+     which is what the old fallback said. */
+  row.dataset.evEnd = ev.end || "";
   return row;
 }
 
@@ -534,10 +580,17 @@ function renderEvents(){
       const row = buildEventNode(ev);
       // mark the event that is happening right now
       const start = new Date(ev.start).getTime();
-      const end = new Date(ev.end || ev.start).getTime();
+      const end = eventEndMs(ev);
       if(now >= start && now <= end) row.classList.add("now");
       list.appendChild(row);
     });
+    /* The marker that says how much of the day did not fit. The trim pass
+       fills it in - it is the only thing that knows how many rows it had
+       to hide. */
+    const more = document.createElement("div");
+    more.className = "more";
+    more.style.display = "none";
+    list.appendChild(more);
     group.appendChild(label);
     group.appendChild(list);
     agendaBox.appendChild(group);
@@ -557,6 +610,7 @@ function trimEvents(){
      what the layout would show with nothing trimmed. */
   agendaBox.querySelectorAll(".ev").forEach(row => { row.style.display = ""; });
   agendaBox.querySelectorAll(".label").forEach(label => { label.style.display = ""; });
+  agendaBox.querySelectorAll(".more").forEach(more => { more.style.display = "none"; });
 
   const groups = Array.from(agendaBox.querySelectorAll(".group"))
                    .filter(g => getComputedStyle(g).display !== "none");
@@ -564,7 +618,8 @@ function trimEvents(){
 
   groups.forEach((group, gi) => {
     const label = group.querySelector(".label");
-    const items = Array.from(group.querySelector(".events").children);
+    /* only the event rows - the "+N more" marker is not an event */
+    const items = Array.from(group.querySelectorAll(".events > .ev"));
     /* a heading hidden on a previous pass costs no space */
     const labelShown = getComputedStyle(label).display !== "none";
     const labelSpace = labelShown ? label.offsetHeight +
@@ -574,14 +629,46 @@ function trimEvents(){
     let used = 0, shown = 0;
 
     if(room > 0){
+      /* the heights are taken before anything is hidden - a hidden row has
+         no height at all, so measuring afterwards would count it as free */
+      const heights = items.map(row => row.offsetHeight);
       items.forEach((row, i) => {
-        if(used + row.offsetHeight > room){
+        if(used + heights[i] > room){
           for(let j = i; j < items.length; j++) items[j].style.display = "none";
         } else {
-          used += row.offsetHeight;
+          used += heights[i];
           shown++;
         }
       });
+
+      /* When the day does not fit, say so rather than quietly dropping the
+         events. The marker costs a line, so at most ONE event is given up
+         to make room for it - and the one given up is the last of the day,
+         which is the furthest away and the least urgent. */
+      const more = group.querySelector(".more");
+      const hidden = items.length - shown;
+      if(more && hidden > 0 && shown > 0){
+        more.style.display = "";
+        more.textContent = "+" + hidden + " more";
+        const moreSpace = more.offsetHeight;
+        if(used + moreSpace > room && shown > 1){
+          const last = items[shown - 1];
+          const lastSpace = last.offsetHeight;
+          last.style.display = "none";
+          used -= lastSpace;
+          shown--;
+          more.textContent = "+" + (items.length - shown) + " more";
+          if(used + moreSpace <= room){
+            used += moreSpace;
+          } else {
+            more.style.display = "none";
+          }
+        } else if(used + moreSpace > room){
+          more.style.display = "none";
+        } else {
+          used += moreSpace;
+        }
+      }
     } else {
       items.forEach(row => { row.style.display = "none"; });
     }
@@ -605,9 +692,23 @@ function trimEvents(){
   // charge of whole-group visibility.
   groups.forEach(group => {
     const label = group.querySelector(".label");
-    const shown = Array.from(group.querySelector(".events").children)
+    const shown = Array.from(group.querySelectorAll(".events > .ev"))
                         .filter(r => getComputedStyle(r).display !== "none").length;
     label.style.display = shown ? "" : "none";
+  });
+
+  // The safety net can hide rows on its own, so the marker counts are
+  // worked out from what is actually on screen, not from what was planned.
+  agendaBox.querySelectorAll(".group").forEach(group => {
+    const more = group.querySelector(".more");
+    if(!more) return;
+    const rows = Array.from(group.querySelectorAll(".events > .ev"));
+    const hidden = rows.filter(r => getComputedStyle(r).display === "none").length;
+    if(hidden > 0 && more.style.display !== "none"){
+      more.textContent = "+" + hidden + " more";
+    } else if(hidden === 0){
+      more.style.display = "none";
+    }
   });
 }
 
@@ -800,13 +901,24 @@ function setBoot(msg){
 function tick(){
   renderClock();
   if(state && state.events) {
-    // re-mark the current event as time passes
+    /* Re-mark the event that is happening now, and notice when one ends.
+       An event that has finished rolls out of view: the board is for what
+       is happening now and what is coming up, and the space a finished
+       event was using goes back to them. */
     const now = Date.now() + clockSkew;
+    let finished = false;
     agendaBox.querySelectorAll(".ev").forEach(row => {
       const start = new Date(row.dataset.evStart).getTime();
-      const end = new Date(row.dataset.evEnd).getTime();
+      /* an event with no end time has no end - not an end of "now" */
+      const end = row.dataset.evEnd ? new Date(row.dataset.evEnd).getTime() : Infinity;
       row.classList.toggle("now", now >= start && now <= end);
+      if(now > end) finished = true;
     });
+    if(finished){
+      /* The render drops the finished events and trims again, so whatever
+         had to be hidden to make room for them comes back into view. */
+      renderEvents();
+    }
   }
 }
 setInterval(tick, 1000);

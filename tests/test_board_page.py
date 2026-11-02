@@ -177,5 +177,54 @@ class PhotoTransitionTests(unittest.TestCase):
                          "transition value")
 
 
+class EventRollOutTests(unittest.TestCase):
+    """Past events roll out of view as they end.
+
+    The board used to show every event of the day, including the ones that
+    had already finished. Those took the space that the events still to
+    come needed, and the trim drops the LAST events of a day to make room
+    - so the board showed what had already happened and hid what was about
+    to happen.
+    """
+
+    def test_the_agenda_leaves_out_events_that_have_finished(self):
+        self.assertIn("isEventOver(ev, now)", BOARD,
+                      "the agenda must not show an event that has ended")
+
+    def test_the_board_notices_when_an_event_ends(self):
+        """The roll-out has to happen on its own.
+
+        Waiting for the next poll would mean an event sat on the wall for
+        up to five minutes after it finished.
+        """
+        tick = BOARD[BOARD.index("function tick(){"):BOARD.index("setInterval(tick,")]
+        self.assertIn("finished", tick,
+                      "the tick must notice an event finishing")
+        self.assertIn("renderEvents()", tick,
+                      "the tick must re-render so the space goes back")
+
+    def test_an_event_with_no_end_time_is_not_treated_as_ending_now(self):
+        """It would vanish the moment it appeared."""
+        self.assertNotIn("ev.end || ev.start", BOARD,
+                         "an event with no end time has no end")
+        self.assertIn('row.dataset.evEnd = ev.end || ""', BOARD)
+
+    def test_the_marker_says_how_much_of_the_day_did_not_fit(self):
+        """The events that did not fit are not dropped silently."""
+        self.assertIn('className = "more"', BOARD)
+        trim = BOARD[BOARD.index("function trimEvents(){"):]
+        trim = trim[:trim.index("\n}\n")]
+        self.assertIn('more.textContent = "+"', trim,
+                      "the marker must say how many events did not fit")
+
+    def test_the_marker_is_not_mistaken_for_an_event(self):
+        """The trim measures the rows - a marker in the list would be
+        counted as one, and the count of real events would be wrong."""
+        trim = BOARD[BOARD.index("function trimEvents(){"):]
+        trim = trim[:trim.index("\n}\n")]
+        self.assertIn('".events > .ev"', trim,
+                      "the trim must measure the event rows only")
+
+
 if __name__ == "__main__":
     unittest.main()

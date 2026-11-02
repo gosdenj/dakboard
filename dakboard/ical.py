@@ -236,6 +236,10 @@ def parse(text, days_ahead=3, now=None, tz=None):
     The window starts at the BEGINNING OF TODAY, not at "now" - otherwise an
     event that is currently running is dropped and the board goes blank for
     the middle of it.
+
+    An event that started BEFORE the window is kept when it is still
+    running: an overnight event is happening now, and the board has to show
+    it. One that finished before the window is history, and is left out.
     """
     tz = tz or datetime.timezone.utc
     now = now or datetime.datetime.now(tz)
@@ -250,7 +254,7 @@ def parse(text, days_ahead=3, now=None, tz=None):
     events = []
     for block in re.findall(r"BEGIN:VEVENT(.*?)END:VEVENT", text, re.DOTALL):
         try:
-            event = _parse_vevent(block, start_window, horizon, tz)
+            event = _parse_vevent(block, start_window, horizon, tz, now)
         except Exception:
             # One malformed event must never cost you the whole calendar.
             # A date-form UNTIL on a recurring all-day event used to raise
@@ -265,7 +269,7 @@ def parse(text, days_ahead=3, now=None, tz=None):
     return events
 
 
-def _parse_vevent(block, start_window, horizon, tz):
+def _parse_vevent(block, start_window, horizon, tz, now=None):
     fields = {}
     for line in block.splitlines():
         line = line.strip()
@@ -323,9 +327,16 @@ def _parse_vevent(block, start_window, horizon, tz):
     for occ in occurrences:
         if occ in excluded:
             continue
-        if occ < start_window or occ > horizon:
-            continue
         end = occ + duration if duration else occ + datetime.timedelta(hours=1)
+        if occ > horizon:
+            continue
+        # An event that started before the window but is STILL RUNNING is
+        # kept: it is happening right now, and the board shows what is
+        # happening now. One that finished before the window is history.
+        # Without this an event that started last night was never fetched,
+        # so the board never showed it at all.
+        if occ < start_window and (now is None or end <= now):
+            continue
         out = {
             "summary": summary,
             "location": location,

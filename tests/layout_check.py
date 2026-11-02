@@ -90,6 +90,8 @@ PROBE = """
     stacked: cols.split(' ').length === 1,
     evs: document.querySelectorAll('.ev').length,
     groups: document.querySelectorAll('.group').length,
+    markers: Array.from(document.querySelectorAll('.more'))
+                 .filter(m => getComputedStyle(m).display !== 'none').length,
     labels: Array.from(document.querySelectorAll('.group .label')).map(l => l.textContent),
     clock: (document.querySelector('.clock .t') || {}).textContent
   };
@@ -121,33 +123,40 @@ def start_server(port, data_dir):
 # A synthetic calendar, so the layout check exercises a board with real
 # events instead of an empty agenda. An empty agenda hides every overflow
 # bug the check exists to find.
+#
+# The events are relative to NOW, not to fixed times of day. The board
+# drops the events that have finished, so a calendar built out of clock
+# times would be empty by the evening - and the check would fail for the
+# wrong reason, or pass for the wrong reason.
+#
+# (summary, minutes from now, length in minutes, where)
 # --------------------------------------------------------------------------
 SAMPLE_EVENTS = [
-    ("Swimming",          "09:30", "Leisure Centre",      0),
-    ("Lunch with Nan",    "12:15", "The Green Man",       0),
-    ("Football practice", "16:00", "Meadow Park",         0),
-    ("School parents evening", "19:30", "Main Hall",      0),
-    ("Curry night",       "21:00", "Home",                0),
-    ("Dentist",           "08:00", "Bright Smile",        1),
-    ("Baby group",        "10:30", "Church hall",         1),
-    ("Football match",    "18:00", "Meadow Park",         1),
+    ("Swimming",               -30,   60, "Leisure Centre"),
+    ("Lunch with Nan",          45,   60, "The Green Man"),
+    ("Football practice",      180,   90, "Meadow Park"),
+    ("School parents evening", 300,  120, "Main Hall"),
+    ("Curry night",            420,   60, "Home"),
+    ("Dentist",               1440,   60, "Bright Smile"),
+    ("Baby group",            1620,   90, "Church hall"),
+    ("Football match",        1860,  120, "Meadow Park"),
 ]
 
 
 def _ics():
     import datetime
-    tz = datetime.timezone(datetime.timedelta(hours=1))
-    today = datetime.datetime.now(tz).date()
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("Europe/London")
+    now = datetime.datetime.now(tz)
     lines = ["BEGIN:VCALENDAR", "VERSION:2.0",
              "PRODID:-//dakboard//layout check//EN"]
-    for summary, hhmm, where, day_offset in SAMPLE_EVENTS:
-        day = today + datetime.timedelta(days=day_offset)
-        hh, mm = hhmm.split(":")
-        start = datetime.datetime(day.year, day.month, day.day, int(hh), int(mm), tzinfo=tz)
-        end = start + datetime.timedelta(hours=1)
+    for summary, offset, length, where in SAMPLE_EVENTS:
+        start = (now + datetime.timedelta(minutes=offset)).replace(
+            second=0, microsecond=0)
+        end = start + datetime.timedelta(minutes=length)
         lines += [
             "BEGIN:VEVENT",
-            f"UID:{summary.replace(' ', '')}-{day.isoformat()}@dakboard",
+            f"UID:{summary.replace(' ', '')}-{start.isoformat()}@dakboard",
             f"DTSTAMP:{start.strftime('%Y%m%dT%H%M%S')}",
             f"DTSTART;TZID=Europe/London:{start.strftime('%Y%m%dT%H%M%S')}",
             f"DTEND;TZID=Europe/London:{end.strftime('%Y%m%dT%H%M%S')}",
@@ -261,7 +270,7 @@ def main():
                     mode = "stacked" if r["stacked"] else "split"
                     flag = "PASS" if ok else "FAIL"
                     print(f"  {flag} {label:<20} {w:>5}x{h:<5} {mode:<8} events={r['evs']:<3} "
-                          f"days={r['groups']:<2} "
+                          f"days={r['groups']:<2} more={r['markers']} "
                           f"scroll={r['scrollX']}/{r['scrollY']} oob={r['nOob']} "
                           f"clip={r['nClip']} tiny={r['nTiny']}")
                     if not ok:
