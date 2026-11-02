@@ -25,7 +25,14 @@ COPY static/ /app/static/
 
 # Run as a non-root user. The data directory is a bind mount owned by the
 # host, so it must be writable by this uid.
-RUN useradd --system --uid 1000 --create-home --home-dir /home/board board \
+#
+# The group is pinned to 1000 rather than left to --system, which would
+# pick a gid from the system range (999 here). A named volume takes its
+# ownership from this directory, so the uid and gid the image publishes
+# have to be the ones the stack asks for - otherwise the volume is owned
+# by a group the container is not in.
+RUN groupadd --gid 1000 board \
+ && useradd --uid 1000 --gid 1000 --create-home --home-dir /home/board board \
  && mkdir -p /data \
  && chown -R board:board /app /data
 USER board

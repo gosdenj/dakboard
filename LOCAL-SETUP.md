@@ -6,7 +6,7 @@ an empty folder to a board on the wall. Nothing here needs the cloud.
 This guide assumes you have either:
 
 - **`dakboard.zip`** — the full source, ready to unpack; or
-- the git repository (`https://github.com/longieirl/dakboard.git`).
+- the git repository (`https://github.com/gosdenj/dakboard.git`).
 
 ---
 
@@ -38,7 +38,7 @@ cd ~/dakboard
 ### From Git
 
 ```bash
-git clone https://github.com/longieirl/dakboard.git
+git clone https://github.com/gosdenj/dakboard.git
 cd dakboard
 ```
 
@@ -263,12 +263,12 @@ So work out where your board will live:
 
 | Your setup | Client type | Redirect URI to register and to type into the settings page | Extra step |
 |---|---|---|---|
-| Board on a Pi/NAS at `http://192.168.1.6:8099`, signing in from your laptop | **Desktop app** | `http://localhost:8099/oauth/callback` | Paste the URL back by hand — see below |
+| Board on a Pi/NAS at `http://<host-ip>:8099`, signing in from your laptop | **Desktop app** | `http://localhost:8099/oauth/callback` | Paste the URL back by hand — see below |
 | Board behind Caddy on a real domain | **Web application** | `https://board.longie.net/oauth/callback` | None |
 | Board running on the same laptop as your browser | **Desktop app** | `http://localhost:8099/oauth/callback` | None |
 
 **A raw LAN IP cannot work, and the error is unhelpful.** If you put
-`http://192.168.1.6:8099/oauth/callback` in the redirect URI field, Google
+`http://<host-ip>:8099/oauth/callback` in the redirect URI field, Google
 rejects it with:
 
 ```
@@ -288,7 +288,7 @@ page is not what you think it is — check for a trailing slash or a stray
 space.
 
 **Why the raw LAN IP not working is fine.** Google will not let a Web
-application client register `http://192.168.1.6:8099` — HTTP is not allowed
+application client register `http://<host-ip>:8099` — HTTP is not allowed
 and raw IP addresses are not allowed. A Desktop app client only accepts
 loopback. So neither type can take a bare LAN address.
 
@@ -391,8 +391,8 @@ board.longie.net {
 ```
 
 For Caddy running on the same host in Docker, the board container has to join
-the `proxy_net` network — the ready-made stack in `stacks/dakboard/` already
-does this.
+the `proxy_net` network — the ready-made stack in
+`docker-compose.portainer.yml` already does this.
 
 ### A hostname on your LAN
 
@@ -407,31 +407,36 @@ Give the machine a static lease in your router, or add a line to
 
 ## 7. Deploy with Portainer (optional)
 
-If you already run Portainer, there is a ready-made stack at `stacks/dakboard/`.
-
-Copy the `stacks/dakboard/` folder into your Portainer stacks repository
-(`longieirl/portainer-stacks`), then in Portainer:
+If you already run Portainer, there is a ready-made stack at
+`docker-compose.portainer.yml`. Add it in Portainer as a **Git
+repository** stack:
 
 | Field | Value |
 |---|---|
-| Repository URL | `https://github.com/longieirl/portainer-stacks.git` |
-| Branch | `main` |
-| Compose path | `stacks/dakboard/docker-compose.yml` |
-| Authentication | Username + a fine-grained PAT with **Contents: Read-only** |
-| GitOps updates | **Polling**, every `24h` |
-| Re-pull image | **OFF** (Watchtower handles image updates) |
+| Repository URL | `https://github.com/gosdenj/dakboard.git` |
+| Branch | `refs/heads/main` |
+| Compose path | `docker-compose.portainer.yml` |
+| Authentication | none needed — the repository is public |
+| GitOps updates | **Polling**, every `5m` |
+| Re-pull image | **ON** (Portainer pulls the image the workflow published) |
 
 Two things people get wrong:
 
 - **Polling, not webhooks.** A webhook from GitHub cannot reach a Portainer
-  running on your LAN. Polling every 24 h is the convention for this reason.
-- **`DOCKER_DATA_HOME` and `DOCKER_SHARED_HOME`** must be set in Portainer's
-  *Environment Variables* tab **when the stack is created**. Portainer CE has
-  no global env injection, so a stack created without them will fail to mount
-  its data directory.
+  running on your LAN. Polling every five minutes is the convention for this
+  reason.
+- **The image comes from the registry.** Portainer redeploys a stack without
+  rebuilding it, so a new commit only reaches the running container if the
+  image has been published. The GitHub workflow does that, and makes an
+  empty "publish" commit afterwards so Portainer knows to pull it.
 
-The stack binds to `192.168.1.6:8099` — change that in the compose file if
-your Docker host has a different address.
+The stack publishes port 8099 on the host and keeps its settings in a
+named Docker volume, `dakboard-config`. Nothing has to be set in
+Portainer's *Environment Variables* tab unless the host port should be
+something other than 8099 — set `DAKBOARD_PORT` there if it should.
+
+**[docs/PORTAINER.md](docs/PORTAINER.md)** has the whole deployment guide:
+the fields, the API equivalent, the volume, and how to roll back.
 
 ---
 
@@ -443,7 +448,7 @@ The board is designed to run fullscreen and unattended.
 
 ```bash
 chromium --kiosk --noerrdialogs --disable-infobars --disable-pinch \
-         --overscroll-history-navigation=0 http://192.168.1.6:8099/
+         --overscroll-history-navigation=0 http://<host-ip>:8099/
 ```
 
 - **Wake Lock** keeps the screen awake; it re-acquires when the tab becomes
@@ -476,7 +481,7 @@ User=pi
 Environment=DISPLAY=:0
 ExecStart=/usr/bin/chromium --kiosk --noerrdialogs --disable-infobars \
           --disable-pinch --overscroll-history-navigation=0 \
-          http://192.168.1.6:8099/
+          http://<host-ip>:8099/
 Restart=always
 RestartSec=5
 
@@ -587,7 +592,7 @@ A volume that Docker created as **root** cannot be written by the
 container's unprivileged user (uid 1000). Fix it on the host:
 
 ```bash
-sudo chown -R 1000:1000 "$DOCKER_DATA_HOME/dakboard/data"
+docker run --rm -u 0 -v dakboard-config:/data alpine chown -R 1000:1000 /data
 ```
 
 ---
@@ -622,7 +627,7 @@ dakboard/
   tests/          the test suite and the layout check
   Dockerfile
   docker-compose.yml
-  stacks/dakboard/  the Portainer stack
+  docker-compose.portainer.yml  the Portainer stack
 ```
 
 Run the tests:

@@ -38,7 +38,7 @@ to fit.
 ## Quick start
 
 ```bash
-git clone https://github.com/longieirl/dakboard.git
+git clone https://github.com/gosdenj/dakboard.git
 cd dakboard
 DAKBOARD_DATA=./data docker compose up -d
 ```
@@ -98,7 +98,7 @@ part that trips people up:
 
 So:
 
-- The board on a Pi/NAS at `http://192.168.1.6:8099`? **Neither** type can
+- The board on a Pi/NAS at `http://<host-ip>:8099`? **Neither** type can
   register that URI — Google rejects a raw IP address with
   `Error 400: invalid_request`, and there is nothing useful on that page.
   Use a **Desktop app** client with the redirect URI
@@ -178,22 +178,27 @@ settings page.
 
 ## Deploying with Portainer
 
-This repo contains a ready-made stack at `stacks/dakboard/`. Add it to
-[`longieirl/portainer-stacks`](https://github.com/longieirl/portainer-stacks)
-as `stacks/dakboard/`, then in Portainer:
+This repo contains a ready-made stack at `docker-compose.portainer.yml`.
+In Portainer, add it as a **Git repository** stack:
 
 | Field | Value |
 |---|---|
-| Repository URL | `https://github.com/longieirl/portainer-stacks.git` |
-| Branch | `main` |
-| Compose path | `stacks/dakboard/docker-compose.yml` |
-| Authentication | Username + fine-grained PAT (Contents: Read-only) |
-| GitOps updates | **Polling**, every `24h` |
-| Re-pull image | OFF (Watchtower handles image updates) |
+| Repository URL | `https://github.com/gosdenj/dakboard.git` |
+| Branch | `refs/heads/main` |
+| Compose path | `docker-compose.portainer.yml` |
+| Authentication | none needed — the repository is public |
+| GitOps updates | **Polling**, every `5m` |
+| Re-pull image | **ON** (Portainer pulls the image the workflow published) |
 
-`DOCKER_DATA_HOME` and `DOCKER_SHARED_HOME` must be set in Portainer's
-Environment Variables tab at stack creation time — Portainer CE has no
-global env injection.
+The image is built by the GitHub workflow and pushed to
+`ghcr.io/gosdenj/dakboard`, because Portainer redeploys a stack without
+rebuilding it. The workflow also makes an empty "publish" commit once the
+image is in the registry, which is what tells Portainer the new image is
+ready.
+
+**[docs/PORTAINER.md](docs/PORTAINER.md)** has the whole thing: the
+fields to fill in, the API equivalent, the named volume the settings live
+in, and how to roll back.
 
 For a hostname, add a site block to the `caddy` stack:
 
@@ -208,8 +213,8 @@ The board container joins `proxy_net`, so Caddy reaches it by service name.
 ### Secrets
 
 There are no secrets in the environment and none in git. The OAuth refresh
-token and the iCal URL are entered in the settings page and stored in
-`${DOCKER_DATA_HOME}/dakboard/data/config.json` with `0600` permissions.
+token and the iCal URL are entered in the settings page and stored in the
+`dakboard-config` Docker volume at `config.json` with `0600` permissions.
 The settings API masks them, so they never travel back to the browser.
 
 ---
@@ -220,7 +225,7 @@ The board is designed to run fullscreen and unattended.
 
 ```bash
 chromium --kiosk --noerrdialogs --disable-infobars --disable-pinch \
-         --overscroll-history-navigation=0 http://192.168.1.6:8099/
+         --overscroll-history-navigation=0 http://<host-ip>:8099/
 ```
 
 - **Wake Lock** keeps the screen awake; it re-acquires when the tab becomes
@@ -277,7 +282,11 @@ dakboard/
 static/
   index.html    the board
   settings.html the settings page
-tests/          93 tests, standard library only
+tests/          111 tests, standard library only
+Dockerfile
+docker-compose.yml            for running it locally
+docker-compose.portainer.yml  the Portainer stack
+docs/PORTAINER.md             the deployment guide
 ```
 
 **The server owns the state.** The photo rotation index, the cached calendar,

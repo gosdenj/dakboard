@@ -9,7 +9,7 @@
 services:
   dakboard:
     build: .
-    image: ghcr.io/longieirl/dakboard:latest
+    image: ghcr.io/gosdenj/dakboard:latest
     container_name: dakboard
     restart: unless-stopped
     ports:

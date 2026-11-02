@@ -1,0 +1,95 @@
+# The board, as a Portainer stack.
+#
+#   Stacks -> Add stack -> Git repository
+#     Repository URL      https://github.com/gosdenj/dakboard.git
+#     Repository reference refs/heads/main
+#     Compose path        docker-compose.portainer.yml
+#
+# The image comes from the GitHub Container Registry rather than from the
+# repository, because Portainer redeploys a stack with 'docker compose up
+# -d' - there is no '--build' in it.  A stack redeploy therefore updates
+# the compose file but keeps the image it already has, so the image has to
+# be published somewhere for a new commit to reach the running container.
+#
+# The GitHub workflow (.github/workflows/ci.yml) builds and publishes the
+# image on every push, and Portainer is told to re-pull the image every
+# time it updates the stack.  Push, wait a few minutes, and the new
+# version is running.
+
+services:
+  dakboard:
+    image: ghcr.io/gosdenj/dakboard:latest
+    container_name: dakboard
+    restart: unless-stopped
+
+    # The port on the host that the screens will use.  Change it in the
+    # stack's environment variables.
+    ports:
+      - "${DAKBOARD_PORT:-8099}:8099"
+
+    volumes:
+      # The settings file, which holds the iCal URL, the Google OAuth
+      # refresh token and the Google Photos album link.
+      #
+      # A named volume rather than a folder on the host: it is the same
+      # everywhere, it survives a redeploy, and it does not depend on the
+      # host and the container sharing a filesystem - which they do not, if
+      # Portainer is running in a container with Docker Desktop underneath.
+      #
+      # The volume takes its ownership from the image, where /data belongs
+      # to uid 1000 - the uid the container runs as.  So the board can
+      # write to it without anybody having to chown anything.
+      - dakboard-config:/data
+
+    environment:
+      # Where the settings file is, inside the container.
+      DAKBOARD_DATA: /data
+      # The port inside the container.  The host side is the mapping above.
+      DAKBOARD_PORT: "8099"
+      # The board's own timezone: the clock and the agenda are in it.
+      DAKBOARD_TZ: "${DAKBOARD_TZ:-Europe/London}"
+      # The container's timezone: this is what the OS is told.
+      TZ: "${TZ:-Europe/London}"
+
+    # The container runs as uid 1000, which owns the volume, so it can
+    # write the settings and nothing else.
+    user: "${DAKBOARD_UID:-1000}:${DAKBOARD_GID:-1000}"
+
+    # The board is quiet, but it does log.  Cap the log so it cannot
+    # quietly fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # On the shared proxy network, so Caddy can reach the board by its
+    # service name if a hostname is ever wanted.
+    networks:
+      - proxy_net
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 100
+
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/api/health',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  dakboard-config:
+    # The name is fixed, so the volume is the same one whatever the stack
+    # is called, and it is easy to find.
+    name: dakboard-config
+
+networks:
+  proxy_net:
+    name: proxy_net
+    external: true
