@@ -107,10 +107,19 @@ jobs:
             echo "todo=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          TOKEN=$(curl -sf "https://${REGISTRY}/token?scope=repository:${IMAGE_NAME}:pull" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
-          if curl -sf -o /dev/null -H "Authorization: Bearer ${TOKEN}" \
-              "https://${REGISTRY}/v2/${IMAGE_NAME}/manifests/sha-${GITHUB_SHA}"; then
+          # Is the image for this commit in the registry?
+          #
+          # 'imagetools inspect' asks the registry about the tag, using the
+          # credentials the login step has already put in place.  It is
+          # used rather than a raw request for the manifest because a
+          # multi-architecture image is an index, and a request that does
+          # not say it wants an index is answered with a 404 - which
+          # would make every check look like the image was missing.
+          #
+          # A package that does not exist yet is not an error either: it
+          # has no image for this commit, which is the same answer.
+          if docker buildx imagetools inspect \
+              "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}" >/dev/null 2>&1; then
             echo "the image for this commit is already published"
             echo "todo=false" >> "$GITHUB_OUTPUT"
           else
