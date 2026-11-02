@@ -1,0 +1,32 @@
+# The settings file holds the iCal URL, the Google OAuth refresh token and
+# the Google Photos album link.  It is written with 0600 permissions and must
+# never be committed.
+config.json
+
+# Runtime state: the local data directory, and the settings inside it.
+data/
+config/
+
+# Docker and machine-specific settings.
+.env
+stack.env
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# Local layout-check output.
+docs/shots/vp-*.png
+docs/shots/vp/

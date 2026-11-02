@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d11">
+<title>Family board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/base.css">
+<style>
+/* ==========================================================================
+   THE BOARD - fluid, for any viewport.
+
+   Two independent scales:
+     --u   viewport-driven, for SPACING. Its minimum is pinned so the
+           smallest derived text still clears the type floor.
+     cqi   container-driven, for TYPE inside the data panel. 1cqi is 1% of
+           the PANEL's own width, so the clock is sized against the space it
+           actually has - 38% of a 4K TV or 100% of a phone - with no
+           per-device CSS.
+
+   Content drops by priority when space runs out. Type is never shrunk.
+   ========================================================================== */
+
+.board{
+  position:relative;
+  height:100dvh; width:100vw;
+  overflow:hidden;
+  display:grid;
+  grid-template-columns: 1.32fr 1fr;
+  grid-template-rows: 100%;
+}
+
+/* ------------------------------ photo pane ----------------------------- */
+.photo{ position:relative; overflow:hidden; background:#0b0d11; }
+.photo .stack{ position:absolute; inset:0; }
+.photo img{
+  position:absolute; inset:0; width:100%; height:100%;
+  object-fit:cover; opacity:0;
+  will-change:opacity, transform;
+  transition:opacity 1.1s ease, transform 9s linear;
+  transform:scale(1.03);
+}
+.photo img.on{ opacity:1; }
+.photo img.ken{ transform:scale(1.09); }
+.photo .veil{
+  position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(90deg,transparent 58%,rgba(13,15,19,.5) 100%);
+}
+.caption{
+  position:absolute; left:var(--pad); bottom:var(--pad); z-index:3;
+  background:rgba(10,12,16,.5); backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.12); border-radius:calc(var(--u)*0.9);
+  padding:calc(var(--u)*.55) calc(var(--u)*.8);
+  font-size:calc(var(--u)*.86); line-height:1.3;
+}
+.caption .d{
+  font-family:var(--font-mono); font-size:calc(var(--u)*.62);
+  color:var(--faint); letter-spacing:.04em; margin-top:calc(var(--u)*.2);
+}
+
+/* ------------------------------ data panel ----------------------------- */
+.data{
+  position:relative; z-index:2;
+  padding:var(--pad);
+  display:flex; flex-direction:column; min-height:0; min-width:0;
+  background:var(--panel-bg);
+  backdrop-filter:blur(22px);
+  border-left:1px solid var(--line);
+  container-type:inline-size;
+  container-name:data;
+}
+
+.head{
+  display:flex; justify-content:space-between; align-items:flex-start;
+  gap:calc(var(--u)*1.15); margin-bottom:calc(var(--u)*1.5); flex-shrink:0;
+}
+.clock{ font-variant-numeric:tabular-nums; line-height:.94; }
+.clock .t{
+  font-weight:200; letter-spacing:-.035em;
+  font-size:clamp(30px, 11cqi, 190px); white-space:nowrap;
+}
+.clock .d{
+  font-size:clamp(11px, 2.1cqi, 34px);
+  font-weight:400; letter-spacing:.10em;
+  color:var(--dim); margin-top:calc(var(--u)*.5); white-space:nowrap;
+}
+.wx{ display:flex; align-items:center; gap:calc(var(--u)*.8); flex-shrink:0; }
+.wx .temp{
+  font-weight:200; letter-spacing:-.03em; line-height:1;
+  font-size:clamp(22px, 6.4cqi, 108px);
+}
+.wx .cond{
+  font-size:clamp(11px, 2cqi, 30px);
+  color:var(--dim); line-height:1.3; margin-top:calc(var(--u)*.25);
+}
+.wx .ic{ width:clamp(20px, 4.6cqi, 76px); height:clamp(20px, 4.6cqi, 76px); flex-shrink:0; opacity:.9; }
+
+.label{
+  font-size:clamp(9.5px, 1.75cqi, 28px);
+  letter-spacing:.16em; text-transform:uppercase;
+  color:var(--faint); font-weight:500; margin:0 0 calc(var(--u)*.45);
+  flex-shrink:0;
+}
+
+.agenda{ flex:1 1 auto; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+/* The groups, their headings and their rows keep their natural height.
+   Without this they SHRINK to fit, which looks tidy and is wrong: the
+   whole point is to drop whole events rather than squash them, and a
+   squashed row leaves the trim pass with nothing to drop. */
+.group{ display:flex; flex-direction:column; min-height:0; flex-shrink:0; }
+.group + .group{ margin-top:calc(var(--u)*1.15); }
+.events{ display:flex; flex-direction:column; flex-shrink:0; }
+.ev{
+  display:flex; gap:calc(var(--u)*.9); align-items:flex-start;
+  padding:calc(var(--u)*.42) 0;
+  border-top:1px solid var(--line);
+  flex-shrink:0;
+}
+.ev:first-child{ border-top:0; }
+.ev .t{
+  font-family:var(--font-mono); font-size:clamp(10px, 2cqi, 32px);
+  color:var(--dim); padding-top:calc(var(--u)*.1);
+  min-width:clamp(34px, 8cqi, 130px); letter-spacing:-.02em; flex-shrink:0;
+}
+.ev .n{ font-size:clamp(12px, 2.55cqi, 42px); line-height:1.28; font-weight:400; min-width:0; }
+.ev .w{ font-size:clamp(10px, 1.95cqi, 32px); color:var(--faint); margin-top:calc(var(--u)*.12); }
+.ev.now .t{ color:var(--accent); font-weight:500; }
+.ev .pill{
+  display:inline-block; font-size:clamp(9.5px, 1.7cqi, 27px);
+  padding:.15em .45em; border-radius:calc(var(--u)*.28);
+  background:rgba(255,255,255,.14); margin-left:.4em;
+  font-family:var(--font-mono); vertical-align:.08em;
+}
+
+.strip{
+  display:flex; gap:calc(var(--u)*.35); margin-top:calc(var(--u)*1.0);
+  padding-top:calc(var(--u)*.8); border-top:1px solid var(--line); flex-shrink:0;
+}
+.strip .day{
+  flex:1; text-align:center; padding:calc(var(--u)*.5) calc(var(--u)*.2);
+  border-radius:calc(var(--u)*.62);
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.085);
+}
+.strip .dn{
+  font-size:clamp(8px, 1.45cqi, 23px); color:var(--faint);
+  font-weight:500; letter-spacing:.06em;
+}
+.strip .ic{ margin:calc(var(--u)*.3) 0; opacity:.9; }
+.strip .ic svg{ width:clamp(13px, 3cqi, 46px); height:clamp(13px, 3cqi, 46px); display:block; margin:0 auto; }
+.strip .tt{ font-size:clamp(10px, 1.9cqi, 31px); font-variant-numeric:tabular-nums; }
+.strip .tt b{ font-weight:500; }
+
+/* ------------------------------ layout B -------------------------------
+   Overlay: the photo goes full bleed and the data becomes floating cards
+   on top of it. The panel is a flex column so the cards keep their
+   natural heights and the agenda takes whatever space is left - no
+   absolute positioning, so nothing can overlap or spill out. */
+.board[data-layout="B"] .photo,
+.board[data-layout="C"] .photo{ grid-column:1 / -1; grid-row:1 / -1; }
+.board[data-layout="B"] .data,
+.board[data-layout="C"] .data{
+  position:absolute; inset:0; z-index:2;
+  display:flex; flex-direction:column;
+  padding:var(--pad); background:none; border-left:0; backdrop-filter:none;
+  pointer-events:none;
+}
+.board[data-layout="B"] .data{ gap:calc(var(--u)*.75); }
+.board[data-layout="B"] .head,
+.board[data-layout="B"] .agenda,
+.board[data-layout="B"] .strip{
+  background:rgba(14,17,22,.62); backdrop-filter:blur(26px) saturate(1.35);
+  border:1px solid rgba(255,255,255,.13); border-radius:calc(var(--u)*1.1);
+  padding:calc(var(--u)*.9) calc(var(--u)*1.1);
+  box-shadow:0 18px 48px -16px rgba(0,0,0,.7);
+}
+.board[data-layout="B"] .head{ flex:0 0 auto; align-self:flex-start; margin:0; }
+.board[data-layout="B"] .agenda{ flex:1 1 auto; min-height:0; overflow:hidden; }
+.board[data-layout="B"] .strip{ flex:0 0 auto; margin:0; border-top:0; }
+.board[data-layout="B"] .caption{
+  left:auto; right:var(--pad); top:var(--pad); bottom:auto;
+}
+.board[data-layout="B"] .photo .veil{
+  background:linear-gradient(180deg,rgba(8,10,13,.55) 0%,transparent 32%,transparent 55%,rgba(8,10,13,.55) 100%);
+}
+
+/* ------------------------------ layout C -------------------------------
+   Cinematic: clock and weather up top, agenda across the bottom, the
+   photo owns the middle. */
+.board[data-layout="C"] .data{ justify-content:space-between; gap:calc(var(--u)*.8); }
+.board[data-layout="C"] .head{ flex:0 0 auto; margin:0; align-items:flex-start; }
+.board[data-layout="C"] .agenda{
+  flex:0 1 auto; min-height:0; overflow:hidden;
+  background:rgba(14,17,22,.55); backdrop-filter:blur(24px) saturate(1.3);
+  border:1px solid rgba(255,255,255,.1); border-radius:calc(var(--u)*1.1);
+  padding:calc(var(--u)*.9) calc(var(--u)*1.1);
+  box-shadow:0 18px 48px -16px rgba(0,0,0,.65);
+}
+.board[data-layout="C"] .strip{ display:none; }
+.board[data-layout="C"] .caption{ display:none; }
+.board[data-layout="C"] .photo .veil{
+  background:linear-gradient(180deg,rgba(8,10,13,.5) 0%,transparent 30%,transparent 50%,rgba(8,10,13,.9) 100%);
+}
+
+/* ---------------------------- structure ---------------------------- */
+@media (max-width: 47rem) , (max-aspect-ratio: 5/6){
+  .board{ grid-template-columns:1fr; grid-template-rows: 0.92fr 1fr; }
+  .data{ border-left:0; border-top:1px solid var(--line); }
+  .photo .veil{
+    background:linear-gradient(180deg,transparent 62%,rgba(13,15,19,.55) 100%);
+  }
+  .caption{ left:calc(var(--u)*.8); bottom:calc(var(--u)*.8); }
+}
+@media (min-aspect-ratio: 2/1) and (min-width: 60rem){
+  .board{ grid-template-columns: 1.62fr 1fr; }
+}
+
+/* --------------------------- content drops ---------------------------- */
+@media (max-height: 34rem){
+  .p3{ display:none !important; }
+}
+@media (max-width: 40rem){
+  .p3{ display:none !important; }
+  .p2{ display:none !important; }
+  .ev .w{ display:none; }
+}
+@media (max-height: 26rem){
+  .p2{ display:none !important; }
+  .head{ margin-bottom:calc(var(--u)*.8); }
+  .ev{ padding:calc(var(--u)*.28) 0; }
+}
+@media (min-width: 100rem) and (min-height: 46rem){
+  .p2.optional{ display:block !important; }
+}
+
+/* ------------------------------ states ------------------------------- */
+.boot{
+  position:absolute; inset:0; z-index:10; display:flex;
+  align-items:center; justify-content:center; flex-direction:column; gap:calc(var(--u)*.8);
+  background:#0b0d11; color:var(--dim); font-size:calc(var(--u)*1.1);
+  transition:opacity .6s ease;
+}
+.boot.gone{ opacity:0; pointer-events:none; }
+.boot .dot{
+  width:calc(var(--u)*.7); height:calc(var(--u)*.7); border-radius:50%;
+  background:var(--accent); animation:pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse{ 0%,100%{opacity:.25;transform:scale(.8)} 50%{opacity:1;transform:scale(1)} }
+.boot .err{ color:#fda4af; max-width:34ch; text-align:center; line-height:1.5; font-size:calc(var(--u)*.9); }
+
+body.hide-cursor{ cursor:none; }
+</style>
+</head>
+<body>
+<div class="board" id="board" data-layout="A">
+
+  <div class="photo">
+    <div class="stack" id="stack"></div>
+    <div class="veil"></div>
+    <div class="caption p3" id="caption">
+      <div style="font-weight:500" id="capTitle">Family album</div>
+      <div class="d" id="capDate"></div>
+    </div>
+  </div>
+
+  <div class="data">
+    <div class="head">
+      <div class="clock">
+        <div class="t" id="clockTime">--:--</div>
+        <div class="d" id="clockDate"></div>
+      </div>
+      <div class="wx">
+        <svg class="ic" id="wxIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+          <path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 9.4 4.5 4.5 0 0 0 7 19h10.5Z"/>
+        </svg>
+        <div>
+          <div class="temp" id="wxTemp">--°</div>
+          <div class="cond p2"><span id="wxLabel">--</span><br><span class="p3" id="wxFeels"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="agenda" id="agenda"></div>
+
+    <div class="strip p2" id="strip"></div>
+  </div>
+</div>
+
+<div class="boot" id="boot">
+  <div class="dot"></div>
+  <div id="bootText">Connecting…</div>
+</div>
+
+<script>
+"use strict";
+/* ==========================================================================
+   The board renders what the server tells it. It fetches nothing from
+   Google, holds no secrets, and keeps no state worth losing.
+
+   The DOM is built ONCE. Updates write only the cells that changed - the
+   FoxESS dashboard measured 0 innerHTML writes during continuous updates
+   and this keeps that property.
+   ========================================================================== */
+
+const $ = (id) => document.getElementById(id);
+
+const board      = $("board");
+const stack      = $("stack");
+const agendaBox  = $("agenda");
+const stripBox   = $("strip");
+const boot       = $("boot");
+const bootText   = $("bootText");
+
+const els = {
+  clockTime: $("clockTime"), clockDate: $("clockDate"),
+  wxTemp: $("wxTemp"), wxLabel: $("wxLabel"), wxFeels: $("wxFeels"), wxIcon: $("wxIcon"),
+  capTitle: $("capTitle"), capDate: $("capDate"),
+};
+
+/* --------------------------- weather icons ---------------------------- */
+const ICONS = {
+  clear:    '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  partly:   '<path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 9.4 4.5 4.5 0 0 0 7 19h10.5Z"/>',
+  cloud:    '<path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 9.4 4.5 4.5 0 0 0 7 19h10.5Z"/>',
+  fog:      '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="M4 18h16M6 21h12"/>',
+  drizzle:  '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="M8 18v2M12 18v3M16 18v2"/>',
+  rain:     '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="M8 18v3M12 18v4M16 18v3"/>',
+  showers:  '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="M8 18v3M13 18v4M17 18v3"/>',
+  snow:     '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="M8 19h.01M12 21h.01M16 19h.01"/>',
+  sleet:    '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="M9 18v3M15 18v3"/>',
+  storm:    '<path d="M17.5 15a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.1 5.4 4.5 4.5 0 0 0 7 15"/><path d="m13 12-3 5h4l-3 5"/>',
+};
+
+/* ------------------------------- state -------------------------------- */
+let state = null;
+let clockSkew = 0;          // server time minus browser time, in ms
+let clockAnchor = 0;
+let serverNow = 0;
+let photoA = null, photoB = null, photoFront = true;
+let currentPhotoUrl = null;
+let eventSignature = "";
+let stripSignature = "";
+let pollTimer = null;
+let source = null;
+
+/* ------------------------------- clock -------------------------------- */
+const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MONTHS = ["January","February","March","April","May","June","July",
+                "August","September","October","November","December"];
+
+function renderClock(){
+  const now = Date.now() + clockSkew;
+  const d = new Date(now);
+  const use24 = !state || state.config.clock_24h !== false;
+  let hh = d.getHours();
+  let suffix = "";
+  if(!use24){
+    suffix = hh >= 12 ? " PM" : " AM";
+    hh = hh % 12 || 12;
+  }
+  const text = String(hh).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  if(els.clockTime.textContent !== text) els.clockTime.textContent = text;
+  const dateText = DAYS[d.getDay()] + " " + d.getDate() + " " + MONTHS[d.getMonth()].toUpperCase();
+  if(els.clockDate.textContent !== dateText) els.clockDate.textContent = dateText;
+}
+
+/* ------------------------------ helpers -------------------------------- */
+function setText(el, value){
+  const text = (value === null || value === undefined) ? "" : String(value);
+  if(el.textContent !== text) el.textContent = text;
+}
+
+function cToF(c){ return c * 9/5 + 32; }
+function tempValue(c){
+  if(c === null || c === undefined) return null;
+  return (state && state.config.units === "fahrenheit") ? cToF(c) : c;
+}
+function tempUnit(){
+  return (state && state.config.units === "fahrenheit") ? "°F" : "°C";
+}
+
+/* ------------------------------- weather ------------------------------ */
+function renderWeather(){
+  const w = state && state.weather;
+  if(!w){ setText(els.wxTemp, "--" + tempUnit()); setText(els.wxLabel, "--"); return; }
+  const t = tempValue(w.temp);
+  setText(els.wxTemp, (t === null ? "--" : Math.round(t)) + "°");
+  setText(els.wxLabel, w.label || "--");
+  const feels = tempValue(w.feels_like);
+  setText(els.wxFeels, feels === null ? "" : "Feels like " + Math.round(feels) + "°");
+  const markup = ICONS[w.icon] || ICONS.cloud;
+  if(els.wxIcon.dataset.icon !== w.icon){
+    els.wxIcon.innerHTML = markup;
+    els.wxIcon.dataset.icon = w.icon;
+  }
+}
+
+function renderStrip(){
+  const w = state && state.weather;
+  const days = (w && w.days) || [];
+  const sig = days.map(d => d.date + ":" + d.max + ":" + d.min + ":" + d.icon).join("|");
+  if(sig === stripSignature) return;
+  stripSignature = sig;
+  stripBox.textContent = "";
+  days.slice(0, 5).forEach((d, i) => {
+    const cell = document.createElement("div");
+    cell.className = "day";
+    const dt = new Date(d.date + "T00:00:00");
+    const dn = document.createElement("div");
+    dn.className = "dn";
+    dn.textContent = (i === 0 ? "TODAY" : DAYS[dt.getDay()].slice(0,3).toUpperCase());
+    const ic = document.createElement("div");
+    ic.className = "ic";
+    ic.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">' +
+                   (ICONS[d.icon] || ICONS.cloud) + '</svg>';
+    const tt = document.createElement("div");
+    tt.className = "tt";
+    const hi = tempValue(d.max), lo = tempValue(d.min);
+    tt.textContent = "";
+    const b = document.createElement("b");
+    b.textContent = hi === null ? "--" : Math.round(hi) + "°";
+    tt.appendChild(b);
+    cell.appendChild(dn); cell.appendChild(ic); cell.appendChild(tt);
+    stripBox.appendChild(cell);
+  });
+}
+
+/* -------------------------------- events ------------------------------ */
+function localDateKey(iso){
+  const d = new Date(iso);
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" +
+         String(d.getDate()).padStart(2,"0");
+}
+
+function daysAhead(){
+  /* how many days the board is set to show. The setting used to change
+     what was FETCHED but not what was DISPLAYED, so raising it did
+     nothing you could see. */
+  const n = parseInt((state && state.config && state.config.days_ahead) || 2, 10);
+  return Math.max(1, Math.min(14, isNaN(n) ? 2 : n));
+}
+
+function dayLabel(offset, date){
+  if(offset === 0) return "Today";
+  if(offset === 1) return "Tomorrow";
+  return DAYS[date.getDay()].slice(0, 3) + " " + date.getDate() + " " +
+         MONTHS[date.getMonth()].slice(0, 3);
+}
+
+function groupEvents(){
+  /* Bucket the events into one group per day, for as many days as the board
+     is set to show. Every group carries a priority so the content-drop
+     rules can shed the least important one first. */
+  const days = daysAhead();
+  const out = [];
+  for(let i = 0; i < days; i++){
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    out.push({
+      key: localDateKey(d.toISOString()),
+      label: dayLabel(i, d),
+      priority: i === 0 ? "p1" : (i === 1 ? "p2 optional" : "p3"),
+      events: []
+    });
+  }
+  const byKey = {};
+  out.forEach(g => { byKey[g.key] = g; });
+  ((state && state.events) || []).forEach(ev => {
+    const g = byKey[localDateKey(ev.start)];
+    if(g) g.events.push(ev);
+  });
+  return out;
+}
+
+function formatTime(ev){
+  if(ev.all_day) return "all day";
+  const d = new Date(ev.start);
+  const use24 = !state || state.config.clock_24h !== false;
+  let hh = d.getHours();
+  let suffix = "";
+  if(!use24){
+    suffix = hh >= 12 ? "p" : "a";
+    hh = hh % 12 || 12;
+  }
+  return String(hh).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0") + suffix;
+}
+
+function buildEventNode(ev){
+  const row = document.createElement("div");
+  row.className = "ev";
+  const t = document.createElement("div");
+  t.className = "t";
+  t.textContent = formatTime(ev);
+  const body = document.createElement("div");
+  const n = document.createElement("div");
+  n.className = "n";
+  n.textContent = ev.summary || "(no title)";
+  const w = document.createElement("div");
+  w.className = "w p2";
+  w.textContent = ev.location || "";
+  body.appendChild(n); body.appendChild(w);
+  row.appendChild(t); row.appendChild(body);
+  row.dataset.evId = ev.start + "|" + (ev.summary || "");
+  row.dataset.evStart = ev.start;
+  row.dataset.evEnd = ev.end || ev.start;
+  return row;
+}
+
+function renderEvents(){
+  const groups = groupEvents();
+  const sig = JSON.stringify(groups.map(g => [g.key, g.events.map(e => e.start + e.summary)]));
+  if(sig === eventSignature){
+    trimEvents();       // the layout may have changed even if the data did not
+    return;
+  }
+  eventSignature = sig;
+
+  /* Build the day groups. The DOM is rebuilt only when the DATA changes -
+     a resize just re-trims what is already there. */
+  agendaBox.textContent = "";
+  const now = Date.now() + clockSkew;
+  groups.forEach(g => {
+    const group = document.createElement("div");
+    group.className = "group" + (g.priority ? " " + g.priority : "");
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = g.label;
+    const list = document.createElement("div");
+    list.className = "events";
+    g.events.forEach(ev => {
+      const row = buildEventNode(ev);
+      // mark the event that is happening right now
+      const start = new Date(ev.start).getTime();
+      const end = new Date(ev.end || ev.start).getTime();
+      if(now >= start && now <= end) row.classList.add("now");
+      list.appendChild(row);
+    });
+    group.appendChild(label);
+    group.appendChild(list);
+    agendaBox.appendChild(group);
+  });
+  trimEvents();
+}
+
+function trimEvents(){
+  const avail = agendaBox.clientHeight;
+  if(!avail) return;
+
+  /* Start from a clean slate. The trim HIDES rows that do not fit, and
+     without this reset they stayed hidden forever - so shrinking the
+     window once lost those events for good, and growing it back did not
+     bring them back. The board looked like the calendar had vanished.
+     Clearing the inline display first lets the measurement start from
+     what the layout would show with nothing trimmed. */
+  agendaBox.querySelectorAll(".ev").forEach(row => { row.style.display = ""; });
+  agendaBox.querySelectorAll(".label").forEach(label => { label.style.display = ""; });
+
+  const groups = Array.from(agendaBox.querySelectorAll(".group"))
+                   .filter(g => getComputedStyle(g).display !== "none");
+  let remaining = avail;
+
+  groups.forEach((group, gi) => {
+    const label = group.querySelector(".label");
+    const items = Array.from(group.querySelector(".events").children);
+    /* a heading hidden on a previous pass costs no space */
+    const labelShown = getComputedStyle(label).display !== "none";
+    const labelSpace = labelShown ? label.offsetHeight +
+      (parseFloat(getComputedStyle(label).marginBottom) || 0) : 0;
+    const groupMargin = gi === 0 ? 0 : (parseFloat(getComputedStyle(group).marginTop) || 0);
+    const room = remaining - labelSpace - groupMargin;
+    let used = 0, shown = 0;
+
+    if(room > 0){
+      items.forEach((row, i) => {
+        if(used + row.offsetHeight > room){
+          for(let j = i; j < items.length; j++) items[j].style.display = "none";
+        } else {
+          used += row.offsetHeight;
+          shown++;
+        }
+      });
+    } else {
+      items.forEach(row => { row.style.display = "none"; });
+    }
+    if(shown) remaining -= labelSpace + groupMargin + used;
+  });
+
+  // Safety net: if anything still overflows (rounding, a late font load),
+  // drop rows from the end until it fits.
+  let guard = 0;
+  while(agendaBox.scrollHeight > agendaBox.clientHeight + 1 && guard < 60){
+    const visible = Array.from(agendaBox.querySelectorAll(".ev"))
+                         .filter(r => getComputedStyle(r).display !== "none");
+    if(!visible.length) break;
+    visible[visible.length - 1].style.display = "none";
+    guard++;
+  }
+
+  // A heading with nothing under it is just noise, so drop the heading too.
+  // Done last, so it reflects whatever the safety net dropped. Hiding the
+  // heading rather than the group keeps the content-drop media queries in
+  // charge of whole-group visibility.
+  groups.forEach(group => {
+    const label = group.querySelector(".label");
+    const shown = Array.from(group.querySelector(".events").children)
+                        .filter(r => getComputedStyle(r).display !== "none").length;
+    label.style.display = shown ? "" : "none";
+  });
+}
+
+/* -------------------------------- photos ------------------------------ */
+function ensureLayer(){
+  const layer = document.createElement("img");
+  layer.alt = "";
+  layer.decoding = "async";
+  stack.appendChild(layer);
+  return layer;
+}
+
+function showPhoto(url, transition, durationMs){
+  if(!url || url === currentPhotoUrl) return;
+  const front = photoFront ? photoA : photoB;
+  const back  = photoFront ? photoB : photoA;
+  if(!front || !back){ photoA = ensureLayer(); photoB = ensureLayer(); return showPhoto(url, transition, durationMs); }
+
+  back.classList.remove("on","ken");
+  back.style.transition = "";
+  back.src = url;
+
+  const apply = () => {
+    back.classList.add("on");
+    if(transition === "ken") back.classList.add("ken");
+    back.style.transition = "opacity " + durationMs + "ms ease, transform " +
+                            (transition === "ken" ? 9000 : durationMs) + "ms linear";
+    back.style.transform = transition === "ken" ? "scale(1.09)" : "scale(1.03)";
+  };
+  // wait for the image to be decodable so the transition never flashes
+  if(back.complete && back.naturalWidth > 0) requestAnimationFrame(apply);
+  else back.onload = () => requestAnimationFrame(apply);
+
+  setTimeout(() => {
+    front.classList.remove("on","ken");
+    front.style.transition = "";
+    front.style.transform = "";
+  }, durationMs + 60);
+
+  currentPhotoUrl = url;
+  photoFront = !photoFront;
+}
+
+/* --------------------------------- state ------------------------------ */
+function applyState(next){
+  state = next;
+  if(next && next.now){
+    serverNow = new Date(next.now).getTime();
+    clockSkew = serverNow - Date.now();
+    clockAnchor = Date.now();
+  }
+  const cfg = (next && next.config) || {};
+  board.dataset.layout = cfg.layout || "A";
+  document.body.classList.toggle("hide-cursor", cfg.hide_cursor !== false);
+
+  renderClock();
+  renderWeather();
+  renderStrip();
+  renderEvents();
+
+  const photo = (next && next.photo) || {};
+  setText(els.capTitle, photo.title || "Family album");
+  if(photo.item && photo.item.taken){
+    const d = new Date(photo.item.taken);
+    setText(els.capDate, d.toLocaleDateString(undefined, {year:"numeric",month:"short",day:"numeric"}));
+  }
+  if(photo.url){
+    showPhoto(photo.url, cfg.transition || "slide", cfg.transition_ms || 1000);
+  }
+  if(boot && !boot.classList.contains("gone")) boot.classList.add("gone");
+}
+
+/* ------------------------------ transport ----------------------------- */
+function connect(){
+  if(source) source.close();
+  source = new EventSource("/api/stream");
+  source.addEventListener("state", e => {
+    try{ applyState(JSON.parse(e.data)); }
+    catch(err){ console.error("board: could not apply the state", err); }
+  });
+  source.addEventListener("calendar", e => {
+    try{ applyState(JSON.parse(e.data)); }
+    catch(err){ console.error("board: could not apply the calendar state", err); }
+  });
+  source.addEventListener("weather", e => {
+    try{ applyState(JSON.parse(e.data)); }
+    catch(err){ console.error("board: could not apply the weather state", err); }
+  });
+  source.addEventListener("photos", e => {
+    try{ applyState(JSON.parse(e.data)); }
+    catch(err){ console.error("board: could not apply the photos state", err); }
+  });
+  source.addEventListener("photo", e => {
+    try{ applyState(JSON.parse(e.data)); }
+    catch(err){ console.error("board: could not apply the photo state", err); }
+  });
+  source.onopen = () => { stopPolling(); setBoot(null); };
+  source.onerror = () => {
+    setBoot("Lost the server — reconnecting…");
+    startPolling();
+  };
+}
+
+function startPolling(){
+  if(pollTimer) return;
+  pollTimer = setInterval(async () => {
+    try{
+      const res = await fetch("/api/state", {cache:"no-store"});
+      if(res.ok) applyState(await res.json());
+    }catch(_){}
+  }, 5000);
+}
+function stopPolling(){
+  if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+}
+
+function setBoot(msg){
+  if(msg === null){
+    boot.classList.add("gone");
+    return;
+  }
+  boot.classList.remove("gone");
+  bootText.className = "";
+  bootText.textContent = msg;
+}
+
+/* ------------------------------ lifecycle ----------------------------- */
+function tick(){
+  renderClock();
+  if(state && state.events) {
+    // re-mark the current event as time passes
+    const now = Date.now() + clockSkew;
+    agendaBox.querySelectorAll(".ev").forEach(row => {
+      const start = new Date(row.dataset.evStart).getTime();
+      const end = new Date(row.dataset.evEnd).getTime();
+      row.classList.toggle("now", now >= start && now <= end);
+    });
+  }
+}
+setInterval(tick, 1000);
+
+window.addEventListener("resize", () => { trimEvents(); renderClock(); });
+if(window.ResizeObserver) new ResizeObserver(() => trimEvents()).observe(agendaBox);
+
+/* wake the screen so the board never sleeps */
+async function keepAwake(){
+  try{
+    if("wakeLock" in navigator){
+      await navigator.wakeLock.request("screen");
+    }
+  }catch(_){}
+}
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "visible") keepAwake();
+});
+
+/* the cursor hides itself on a wall board */
+let cursorTimer = null;
+function wakeCursor(){
+  document.body.classList.remove("hide-cursor");
+  if(cursorTimer) clearTimeout(cursorTimer);
+  cursorTimer = setTimeout(() => {
+    if(state && state.config && state.config.hide_cursor !== false){
+      document.body.classList.add("hide-cursor");
+    }
+  }, 4000);
+}
+document.addEventListener("mousemove", wakeCursor);
+document.addEventListener("touchstart", wakeCursor);
+
+keepAwake();
+connect();
+setBoot("Connecting…");
+</script>
+</body>
+</html>
