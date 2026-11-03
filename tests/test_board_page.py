@@ -226,5 +226,24 @@ class EventRollOutTests(unittest.TestCase):
                       "the trim must measure the event rows only")
 
 
+    def test_text_selection_is_off(self):
+        """A wall board is touched, not read.
+
+        A drag across the screen used to leave the event names
+        highlighted, with the selection handles sitting over the photo.
+        """
+        tight = BOARD.replace(" ", "")
+        self.assertIn("user-select:none", tight)
+        # iOS shows its own callout menu on a long press
+        self.assertIn("-webkit-touch-callout:none", tight)
+
+    def test_the_settings_page_stays_selectable(self):
+        """There the iCal link and the client id are worth copying."""
+        settings = (pathlib.Path(__file__).resolve().parent.parent
+                    / "static" / "settings.html").read_text(encoding="utf-8")
+        self.assertNotIn("user-select:none", settings.replace(" ", ""),
+                         "the settings page must keep text selectable")
+
+
 if __name__ == "__main__":
     unittest.main()

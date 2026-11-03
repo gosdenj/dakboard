@@ -24,6 +24,18 @@
    Content drops by priority when space runs out. Type is never shrunk.
    ========================================================================== */
 
+/* A wall board is touched, not read.
+   A drag across the screen used to leave the event names highlighted,
+   with the selection handles sitting over the photo. There is nothing on
+   the board that can be copied, so nothing is lost by turning selection
+   off. The settings page keeps it - there the iCal link and the client
+   id are worth copying. */
+html,body{
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+}
+
 .board{
   position:relative;
   height:100dvh; width:100vw;
